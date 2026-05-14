@@ -1,0 +1,289 @@
+version: '3.9'
+
+# ============================================================
+# DIT BIBLIOTHEQUE — Docker Compose avec Profils
+#
+# USAGE :
+#   Mode développement : docker compose --profile dev up
+#   Mode production    : docker compose --profile prod up --build
+# ============================================================
+
+networks:
+  dit-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ml_shared_data:
+  ml_models:
+
+services:
+
+  # ════════════════════════════════════════════════════════════
+  # BASE DE DONNÉES (toujours lancée)
+  # ════════════════════════════════════════════════════════════
+  db:
+    image: postgres:15-alpine
+    container_name: dit_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-dit_bibliotheque}
+      POSTGRES_USER:     ${POSTGRES_USER:-dit_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dit_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - dit-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dit_user} -d ${POSTGRES_DB:-dit_bibliotheque}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ════════════════════════════════════════════════════════════
+  # PROFIL DEV — Hot reload
+  # ════════════════════════════════════════════════════════════
+
+  service-livres-dev:
+    container_name: dit_livres_dev
+    profiles: [dev]
+    build:
+      context: ./services/livres
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-dit_user}:${POSTGRES_PASSWORD:-dit_secret}@db:5432/${POSTGRES_DB:-dit_bibliotheque}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-dev-secret-livres}
+      - DEBUG=True
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./services/livres:/app
+    networks:
+      - dit-network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python manage.py runserver 0.0.0.0:8001
+
+  service-users-dev:
+    container_name: dit_users_dev
+    profiles: [dev]
+    build:
+      context: ./services/users
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-dit_user}:${POSTGRES_PASSWORD:-dit_secret}@db:5432/${POSTGRES_DB:-dit_bibliotheque}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-dev-secret-users}
+      - DEBUG=True
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./services/users:/app
+    networks:
+      - dit-network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python manage.py runserver 0.0.0.0:8002
+
+  service-emprunts-dev:
+    container_name: dit_emprunts_dev
+    profiles: [dev]
+    build:
+      context: ./services/emprunts
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-dit_user}:${POSTGRES_PASSWORD:-dit_secret}@db:5432/${POSTGRES_DB:-dit_bibliotheque}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-dev-secret-emprunts}
+      - DEBUG=True
+      - SERVICE_LIVRES_URL=http://service-livres-dev:8001
+      - SERVICE_USERS_URL=http://service-users-dev:8002
+      - EXPORT_DIR=/ml_data
+    ports:
+      - "8003:8003"
+    volumes:
+      - ./services/emprunts:/app
+      - ml_shared_data:/ml_data
+    networks:
+      - dit-network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: python manage.py runserver 0.0.0.0:8003
+
+  reco-api-dev:
+    container_name: dit_reco_dev
+    profiles: [dev]
+    build:
+      context: ./services/reco-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATA_PATH=/ml_data/loans_clean.csv
+      - MODEL_PATH=/ml_models/model.pkl
+      - PYTHONPATH=/app
+      - SERVICE_LIVRES_URL=http://service-livres-dev:8001
+    ports:
+      - "8004:8004"
+    volumes:
+      - ./services/reco-api:/app
+      - ml_shared_data:/ml_data
+      - ml_models:/ml_models
+    networks:
+      - dit-network
+    depends_on:
+      service-emprunts-dev:
+        condition: service_started
+    command: uvicorn main:app --host 0.0.0.0 --port 8004 --reload
+
+  frontend-dev:
+    container_name: dit_frontend_dev
+    profiles: [dev]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      - REACT_APP_LIVRES_URL=http://localhost:8001
+      - REACT_APP_USERS_URL=http://localhost:8002
+      - REACT_APP_EMPRUNTS_URL=http://localhost:8003
+      - REACT_APP_RECO_URL=http://localhost:8004
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - dit-network
+    depends_on:
+      service-livres-dev:
+        condition: service_started
+      service-users-dev:
+        condition: service_started
+      service-emprunts-dev:
+        condition: service_started
+      reco-api-dev:
+        condition: service_started
+    command: npm start
+
+  # ════════════════════════════════════════════════════════════
+  # PROFIL PROD — Build optimisé
+  # ════════════════════════════════════════════════════════════
+
+  service-livres-prod:
+    container_name: dit_livres_prod
+    profiles: [prod]
+    build:
+      context: ./services/livres
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-dit_user}:${POSTGRES_PASSWORD:-dit_secret}@db:5432/${POSTGRES_DB:-dit_bibliotheque}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-prod-secret-livres}
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost}
+    ports:
+      - "8001:8001"
+    networks:
+      - dit-network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8001 --workers 3
+
+  service-users-prod:
+    container_name: dit_users_prod
+    profiles: [prod]
+    build:
+      context: ./services/users
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-dit_user}:${POSTGRES_PASSWORD:-dit_secret}@db:5432/${POSTGRES_DB:-dit_bibliotheque}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-prod-secret-users}
+      - DEBUG=False
+    ports:
+      - "8002:8002"
+    networks:
+      - dit-network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8002 --workers 3
+
+  service-emprunts-prod:
+    container_name: dit_emprunts_prod
+    profiles: [prod]
+    build:
+      context: ./services/emprunts
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-dit_user}:${POSTGRES_PASSWORD:-dit_secret}@db:5432/${POSTGRES_DB:-dit_bibliotheque}
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-prod-secret-emprunts}
+      - DEBUG=False
+      - SERVICE_LIVRES_URL=http://service-livres-prod:8001
+      - SERVICE_USERS_URL=http://service-users-prod:8002
+      - EXPORT_DIR=/ml_data
+    ports:
+      - "8003:8003"
+    volumes:
+      - ml_shared_data:/ml_data
+    networks:
+      - dit-network
+    depends_on:
+      db:
+        condition: service_healthy
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8003 --workers 3
+
+  reco-api-prod:
+    container_name: dit_reco_prod
+    profiles: [prod]
+    build:
+      context: ./services/reco-api
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      - DATA_PATH=/ml_data/loans_clean.csv
+      - MODEL_PATH=/ml_models/model.pkl
+      - PYTHONPATH=/app
+    ports:
+      - "8004:8004"
+    volumes:
+      - ml_shared_data:/ml_data
+      - ml_models:/ml_models
+    networks:
+      - dit-network
+    depends_on:
+      service-emprunts-prod:
+        condition: service_started
+    command: uvicorn main:app --host 0.0.0.0 --port 8004 --workers 2
+
+  frontend-prod:
+    container_name: dit_frontend_prod
+    profiles: [prod]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - dit-network
+    depends_on:
+      service-livres-prod:
+        condition: service_started
+      service-users-prod:
+        condition: service_started
+      service-emprunts-prod:
+        condition: service_started
+      reco-api-prod:
+        condition: service_started
