@@ -1,0 +1,49 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python ml/preprocess.py
+    deps:
+    - path: ml/data/loans.csv
+      md5: dbd50dea7e297c4a431083e6c0d32d61
+      size: 652
+    - path: ml/preprocess.py
+      md5: b071839ad16e9cfafc25ab225806603f
+      size: 3848
+    outs:
+    - path: ml/data/loans_clean.csv
+      md5: 4ed4ede98b2099f045348990a6b1eb69
+      size: 580
+  train:
+    cmd: python ml/train.py --algo SVD --components 5
+    deps:
+    - path: ml/data/loans_clean.csv
+      md5: 4ed4ede98b2099f045348990a6b1eb69
+      size: 580
+    - path: ml/train.py
+      md5: a2b45ed98cf21ca947b8656e22da9b55
+      size: 6659
+    params:
+      params.yaml:
+        train.algo: SVD
+        train.n_components: 5
+        train.n_neighbors: 5
+    outs:
+    - path: ml/models/model.pkl
+      md5: 2ef18e507b3ba66884ed9b11770076fb
+      size: 3015
+  evaluate:
+    cmd: python ml/evaluate.py
+    deps:
+    - path: ml/data/loans_clean.csv
+      md5: 4ed4ede98b2099f045348990a6b1eb69
+      size: 580
+    - path: ml/evaluate.py
+      md5: a3b3e24284b73cc3de18d90b82fe514d
+      size: 4805
+    - path: ml/models/model.pkl
+      md5: 2ef18e507b3ba66884ed9b11770076fb
+      size: 3015
+    outs:
+    - path: ml/metrics.json
+      md5: bf1ebb81c74a3206c72ff96d46c10aa1
+      size: 169

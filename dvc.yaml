@@ -1,0 +1,38 @@
+# ============================================================
+# DIT BIBLIOTHEQUE — Pipeline DVC
+# ============================================================
+stages:
+
+  preprocess:
+    cmd: python ml/preprocess.py
+    deps:
+      - ml/preprocess.py
+      - ml/data/loans.csv
+    outs:
+      - ml/data/loans_clean.csv
+    desc: "Nettoie loans.csv → loans_clean.csv"
+
+  train:
+    cmd: python ml/train.py --algo ${train.algo} --components ${train.n_components}
+    deps:
+      - ml/train.py
+      - ml/data/loans_clean.csv
+    outs:
+      - ml/models/model.pkl
+    params:
+      - params.yaml:
+          - train.algo
+          - train.n_components
+          - train.n_neighbors
+    desc: "Entraîne SVD/KNN → model.pkl"
+
+  evaluate:
+    cmd: python ml/evaluate.py
+    deps:
+      - ml/evaluate.py
+      - ml/models/model.pkl
+      - ml/data/loans_clean.csv
+    metrics:
+      - ml/metrics.json:
+          cache: false
+    desc: "Calcule RMSE/MAE → metrics.json"

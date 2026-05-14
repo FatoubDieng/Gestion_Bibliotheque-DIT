@@ -1,0 +1,9 @@
+{
+  "algorithme": "SVD",
+  "rmse": 3.8131,
+  "mae": 3.4524,
+  "n_predictions": 5,
+  "n_users": 7,
+  "n_items": 12,
+  "trained_at": "2026-05-14T06:25:16.513482"
+}

@@ -1,0 +1,28 @@
+# Fichier : params.yaml
+#
+# Ce fichier versionne les hyperparamètres du modèle ML.
+# Quand on changes une valeur ici = dvc repro relance train
+#
+# Comparer deux versions :
+#   dvc params diff
+
+train:
+  # Algorithme : SVD ou KNN
+  algo: SVD
+
+  # Nombre de composants latents (SVD uniquement)
+  # Plus grand = plus précis mais plus lent
+  n_components: 5
+
+  # Nombre de voisins (KNN uniquement)
+  n_neighbors: 5
+
+  # Proportion du jeu de test (0.0 à 0.5)
+  test_size: 0.2
+
+preprocess:
+  # Note par défaut si l'utilisateur n'a pas noté le livre
+  default_rating: 3
+
+  # Durée max d'un emprunt en jours (supprimer les outliers)
+  max_duree_jours: 365
