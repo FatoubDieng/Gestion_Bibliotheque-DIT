@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+"""
+DIT Bibliothèque — Service Emprunts
+Utilitaire de gestion Django
+
+Commandes utiles :
+  python manage.py runserver 0.0.0.0:8003   → lancer le serveur
+  python manage.py makemigrations           → créer les migrations
+  python manage.py migrate                  → appliquer les migrations
+  python manage.py detecter_retards         → détecter les retards manuellement
+"""
+import os
+import sys
+
+
+def main():
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+
+    try:
+        from django.core.management import execute_from_command_line
+    except ImportError as exc:
+        raise ImportError(
+            "Impossible d'importer Django. "
+            "Vérifie que Django est installé et que ton environnement "
+            "virtuel est activé."
+        ) from exc
+
+    execute_from_command_line(sys.argv)
+
+
+if __name__ == '__main__':
+    main()
