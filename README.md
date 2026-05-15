@@ -60,7 +60,7 @@
 ### 1. Cloner le projet
 
 ```bash
-git clone https://github.com/fatoubdieng/gestion_bibliotheques.git
+git clone https://github.com/FatoubDieng/Gestion_Bibliotheque-DIT.git
 cd gestion_bibliotheques
 ```
 
